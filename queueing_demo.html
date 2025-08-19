@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>待ち行列理論デモ v3（M/M/c：数値入力＋ボタン調整／シンプル状態表示）</title>
+<style>
+  :root{
+    --bg:#0b1020; --panel:#141b2d; --accent:#69d2e7; --accent2:#a7dbd8;
+    --ok:#6bd66b; --warn:#ffd166; --bad:#ff6b6b; --text:#e8eef6; --muted:#a9b6c7;
+  }
+  html,body{height:100%;}
+  body{
+    margin:0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Noto Sans CJK JP", "Yu Gothic UI", "Meiryo", sans-serif;
+    color:var(--text);
+    background:linear-gradient(180deg,#0a0f1f,#0b152b);
+  }
+  .wrap{max-width:1200px; margin:20px auto; padding:16px;}
+  header{display:flex; gap:16px; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-bottom:12px;}
+  header h1{font-size:20px; margin:0; font-weight:700; letter-spacing:0.03em;}
+  header .sub{color:var(--muted); font-size:14px;}
+  .grid{display:grid; grid-template-columns: 1.1fr 1fr; gap:16px;}
+  .panel{
+    background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:12px; padding:12px 14px;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.02);
+  }
+  .panel h2{margin:0 0 8px; font-size:16px; letter-spacing:0.02em;}
+  .controls{display:grid; grid-template-columns: 1fr 1fr; gap:8px 16px; align-items:start;}
+  .row{display:grid; grid-template-columns: 110px 1fr; align-items:center; gap:8px;}
+  .ctl{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .num{width:110px; padding:8px 10px; font-size:14px; color:var(--text); background:rgba(255,255,255,0.05);
+       border:1px solid rgba(255,255,255,0.1); border-radius:8px; outline:none;}
+  .num:focus{border-color:var(--accent); box-shadow: 0 0 0 2px rgba(105,210,231,0.2);}
+  .btn{
+    appearance:none; border:0; border-radius:8px; padding:7px 10px;
+    background:linear-gradient(180deg, #1c2742, #131a2c);
+    color:var(--text); cursor:pointer; font-weight:600; letter-spacing:0.02em;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 6px 16px rgba(0,0,0,0.2);
+    font-size:12px;
+  }
+  .btn.small{padding:4px 8px; font-size:12px;}
+  .btn.alt{background:linear-gradient(180deg, #2a3a60, #1b2744);}
+  .btn.warn{background:linear-gradient(180deg,#725a1e,#4f3f16);}
+  .btn.pill{border-radius:999px; padding:6px 10px; font-size:12px;}
+  .tag{display:inline-flex; align-items:center; gap:6px; padding:3px 8px; border-radius:999px; font-size:12px; background:rgba(255,255,255,0.06); color:var(--muted); border:1px solid rgba(255,255,255,0.08);}
+  .metrics{display:grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap:8px;}
+  .metric{background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:10px; padding:10px;}
+  .metric .k{ font-size:12px; color:var(--muted); }
+  .metric .v{ font-size:18px; font-weight:700; }
+  .small{font-size:12px; color:var(--muted);}
+  details{margin-top:6px;} summary{cursor:pointer; color:var(--accent2);}
+  canvas{display:block; width:100%; height:460px; border-radius:12px; background:linear-gradient(180deg,#0b1020,#0c1a30);}
+  .statusbar{
+    display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin-top:10px;
+  }
+  .statbox{background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:8px 12px;}
+  .statbox .label{font-size:12px; color:var(--muted);}
+  .statbox .value{font-size:28px; font-weight:800;}
+  .footer{color:var(--muted); font-size:12px; margin-top:12px;}
+  .mono{font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono", "Noto Sans Mono CJK JP", monospace;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>待ち行列理論デモ v3（M/M/c）</h1>
+      <div class="sub">数値を直接入力し、ボタンで微調整。アニメーションは「待ち・処理中・完了」の状態だけをシンプル表示（移動なし）。</div>
+    </div>
+    <div class="inline">
+      <span class="tag">単位：1分あたり</span>
+      <span class="tag">v3</span>
+    </div>
+  </header>
+
+  <div class="grid">
+    <section class="panel">
+      <h2>コントロール（数値入力＋ボタン調整）</h2>
+      <div class="controls">
+        <div class="row">
+          <label>到着率 λ</label>
+          <div class="ctl">
+            <input id="lambda_in" type="number" class="num" step="0.1" min="0" value="27.0" />
+            <span>/分</span>
+            <div class="ctl">
+              <button class="btn small" data-param="lambda" data-delta="-1">-1</button>
+              <button class="btn small" data-param="lambda" data-delta="-0.1">-0.1</button>
+              <button class="btn small" data-param="lambda" data-scale="0.9">×0.9</button>
+              <button class="btn small" data-param="lambda" data-scale="1.1">×1.1</button>
+              <button class="btn small" data-param="lambda" data-delta="+0.1">+0.1</button>
+              <button class="btn small" data-param="lambda" data-delta="+1">+1</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label>サービス率 μ</label>
+          <div class="ctl">
+            <input id="mu_in" type="number" class="num" step="0.1" min="0.01" value="30.0" />
+            <span>/分</span>
+            <div class="ctl">
+              <button class="btn small" data-param="mu" data-delta="-1">-1</button>
+              <button class="btn small" data-param="mu" data-delta="-0.1">-0.1</button>
+              <button class="btn small" data-param="mu" data-scale="0.9">×0.9</button>
+              <button class="btn small" data-param="mu" data-scale="1.1">×1.1</button>
+              <button class="btn small" data-param="mu" data-delta="+0.1">+0.1</button>
+              <button class="btn small" data-param="mu" data-delta="+1">+1</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label>サーバ台数 c</label>
+          <div class="ctl">
+            <input id="c_in" type="number" class="num" step="1" min="1" value="2" />
+            <span>台</span>
+            <div class="ctl">
+              <button class="btn small" data-param="c" data-delta="-1">-1</button>
+              <button class="btn small" data-param="c" data-delta="+1">+1</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <label>時間圧縮</label>
+          <div class="ctl">
+            <input id="speed_in" type="number" class="num" step="0.25" min="0.25" value="1.00" />
+            <span>×</span>
+            <div class="ctl">
+              <button class="btn small" data-param="speed" data-scale="0.5">×0.5</button>
+              <button class="btn small" data-param="speed" data-scale="2.0">×2</button>
+            </div>
+          </div>
+        </div>
+        <div class="row" style="grid-column:1/-1;">
+          <div class="ctl">
+            <button id="pauseBtn" class="btn">⏸ 一時停止</button>
+            <button id="resetBtn" class="btn alt">🔄 リセット</button>
+            <span class="small">プリセット:</span>
+            <button class="btn pill" data-preset="stable">ρ ≈ 0.5（安定）</button>
+            <button class="btn pill" data-preset="heavy">ρ ≈ 0.9（混雑）</button>
+            <button class="btn pill warn" data-preset="unstable">ρ ≥ 1（不安定）</button>
+          </div>
+        </div>
+      </div>
+      <details>
+        <summary>このデモの見方（クリックで開閉）</summary>
+        <ul>
+          <li>ポアソン到着（平均 λ /分）、指数分布サービス（平均率 μ /分）の M/M/c 系をシミュレーション。</li>
+          <li>アニメは「待ち」「処理中」「完了」を<b>固定配置</b>で表示（移動なし）。</li>
+          <li>数値入力で直接設定、ボタンで微調整・スケール変更が可能。</li>
+        </ul>
+      </details>
+    </section>
+
+    <section class="panel">
+      <h2>理論値（M/M/c）</h2>
+      <div class="metrics" style="margin-bottom:8px;">
+        <div class="metric"><div class="k">利用率 ρ</div><div class="v" id="rho_v">—</div></div>
+        <div class="metric"><div class="k">待ち人数 L<sub>q</sub></div><div class="v" id="Lq_v">—</div></div>
+        <div class="metric"><div class="k">系内人数 L</div><div class="v" id="L_v">—</div></div>
+        <div class="metric"><div class="k">待ち時間 W<sub>q</sub></div><div class="v" id="Wq_v">—</div></div>
+        <div class="metric"><div class="k">系内時間 W</div><div class="v" id="W_v">—</div></div>
+        <div class="metric"><div class="k">待ち確率（Erlang C）</div><div class="v" id="Pc_v">—</div></div>
+      </div>
+      <div class="small">単位：L・Lq は「人」、W・Wq は「分」。安定条件：ρ = λ/(cμ) &lt; 1</div>
+      <details>
+        <summary>式（M/M/c の要点）</summary>
+        <div class="small mono">
+          a = λ / μ<br/>
+          ρ = λ / (c μ)<br/>
+          P0 = 1 / [ Σ_{n=0}^{c-1} (a^n / n!) + (a^c / (c! (1-ρ))) ]<br/>
+          P<sub>wait</sub> = ErlangC = (a^c / (c! (1-ρ))) · P0<br/>
+          Lq = P<sub>wait</sub> · ρ / (1-ρ)<br/>
+          L = Lq + a<br/>
+          Wq = Lq / λ,  W = Wq + 1/μ
+        </div>
+      </details>
+    </section>
+  </div>
+
+  <section class="panel" style="margin-top:16px;">
+    <h2>状態ビュー（待ち／処理中／完了）</h2>
+    <canvas id="sim" width="1200" height="520"></canvas>
+
+    <div class="statusbar">
+      <div class="statbox"><div class="label">Queue（列人数）</div><div class="value" id="queueCount">0</div></div>
+      <div class="statbox"><div class="label">In Service（処理中）</div><div class="value"><span id="inServiceCount">0</span>/<span id="serverTotal">0</span></div></div>
+      <div class="statbox"><div class="label">ρ（利用率）</div><div class="value" id="rhoInline">0.00</div></div>
+      <div class="statbox"><div class="label">処理済み人数</div><div class="value" id="served_sim">0</div></div>
+    </div>
+
+    <div class="footer">© Queueing Demo v3（単一HTML・外部ライブラリなし・ローカル動作）</div>
+  </section>
+</div>
+
+<script>
+(function(){
+  // ===== Utilities =====
+  const clamp=(x,min,max)=>Math.max(min,Math.min(max,x));
+  const randExp=(rate)=>{ if(rate<=0) return Infinity; let u=0; while(u===0) u=Math.random(); return -Math.log(u)/rate; };
+  const fact=(n)=>{ let r=1; for(let i=2;i<=n;i++) r*=i; return r; };
+  const lerp=(a,b,t)=>a+(b-a)*t;
+
+  // ===== Theoretical M/M/c =====
+  function mmc(lambda, mu, c){
+    lambda=Math.max(0,lambda); mu=Math.max(0,mu); c=Math.max(1,Math.floor(c));
+    const rho = (c*mu>0)? lambda/(c*mu) : Infinity;
+    const a = (mu>0)? lambda/mu : Infinity;
+    if(mu<=0){
+      return {rho, stable:false, P0:0, Pc:1, Lq:Infinity, L:Infinity, Wq:Infinity, W:Infinity};
+    }
+    if(lambda===0) return {rho:0, stable:true, P0:1, Pc:0, Lq:0, L:0, Wq:0, W:1/mu};
+    if(rho>=1) return {rho, stable:false, P0:0, Pc:1, Lq:Infinity, L:Infinity, Wq:Infinity, W:Infinity};
+    let sum=0;
+    for(let n=0;n<=c-1;n++) sum += Math.pow(a,n)/fact(n);
+    const term = Math.pow(a,c)/(fact(c)*(1-rho));
+    const P0 = 1.0/(sum+term);
+    const Pc = term*P0;
+    const Lq = (Pc*rho)/(1-rho);
+    const L = Lq + a;
+    const Wq = Lq/lambda;
+    const W = Wq + 1/mu;
+    return {rho, stable:true, P0, Pc, Lq, L, Wq, W};
+  }
+
+  // ===== DOM Handles =====
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d');
+  const DPR = window.devicePixelRatio || 1;
+  function resizeCanvas(){
+    const w=canvas.clientWidth, h=canvas.clientHeight;
+    canvas.width = Math.floor(w*DPR); canvas.height = Math.floor(h*DPR);
+  }
+  resizeCanvas(); window.addEventListener('resize', resizeCanvas);
+
+  // Inputs
+  const lambdaIn = document.getElementById('lambda_in');
+  const muIn = document.getElementById('mu_in');
+  const cIn = document.getElementById('c_in');
+  const speedIn = document.getElementById('speed_in');
+
+  // Metrics labels
+  const rho_v=document.getElementById('rho_v');
+  const Lq_v=document.getElementById('Lq_v');
+  const L_v=document.getElementById('L_v');
+  const Wq_v=document.getElementById('Wq_v');
+  const W_v=document.getElementById('W_v');
+  const Pc_v=document.getElementById('Pc_v');
+
+  const queueCountEl=document.getElementById('queueCount');
+  const inServiceCountEl=document.getElementById('inServiceCount');
+  const serverTotalEl=document.getElementById('serverTotal');
+  const rhoInlineEl=document.getElementById('rhoInline');
+  const served_v=document.getElementById('served_sim');
+
+  const pauseBtn=document.getElementById('pauseBtn');
+  const resetBtn=document.getElementById('resetBtn');
+
+  // Preset buttons
+  document.querySelectorAll('button[data-preset]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const mode=btn.getAttribute('data-preset');
+      const mu=parseFloat(muIn.value)||30;
+      const c=parseInt(cIn.value,10)||1;
+      let lambda;
+      if(mode==='stable'){lambda=0.5*c*mu;}
+      else if(mode==='heavy'){lambda=0.9*c*mu;}
+      else {lambda=1.1*c*mu;}
+      lambdaIn.value = Math.max(0, lambda).toFixed(1);
+      onParamsChange(true);
+    });
+  });
+
+  // Adjustment buttons
+  document.querySelectorAll('button[data-param]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const p=btn.getAttribute('data-param');
+      const deltaStr=btn.getAttribute('data-delta');
+      const scaleStr=btn.getAttribute('data-scale');
+      const apply = (v)=>{
+        if(p==='lambda'){ lambdaIn.value = String(v.toFixed(1)); }
+        else if(p==='mu'){ muIn.value = String(v.toFixed(1)); }
+        else if(p==='c'){ cIn.value = String(Math.max(1,Math.round(v))); }
+        else if(p==='speed'){ speedIn.value = String(Math.max(0.25, v).toFixed(2)); }
+      };
+      let v;
+      if(p==='lambda') v=parseFloat(lambdaIn.value)||0;
+      else if(p==='mu') v=parseFloat(muIn.value)||0.01;
+      else if(p==='c') v=parseInt(cIn.value,10)||1;
+      else if(p==='speed') v=parseFloat(speedIn.value)||1.0;
+
+      if(deltaStr){
+        const d=parseFloat(deltaStr);
+        v = v + d;
+      }
+      if(scaleStr){
+        const s=parseFloat(scaleStr);
+        v = v * s;
+      }
+      // bounds
+      if(p==='lambda'){ v=Math.max(0,v); }
+      if(p==='mu'){ v=Math.max(0.01,v); }
+      if(p==='c'){ v=Math.max(1,Math.round(v)); }
+      if(p==='speed'){ v=Math.max(0.25,v); }
+
+      apply(v);
+      onParamsChange(p==='lambda'); // arrival reset only when lambda changed
+    });
+  });
+
+  // Change handlers
+  [lambdaIn, muIn, cIn, speedIn].forEach(el=>{
+    el.addEventListener('change', ()=> onParamsChange(el===lambdaIn));
+  });
+
+  // Params
+  let params={
+    lambdaPerMin: parseFloat(lambdaIn.value)||27,
+    muPerMin: parseFloat(muIn.value)||30,
+    servers: parseInt(cIn.value,10)||2,
+    speed: parseFloat(speedIn.value)||1.0,
+  };
+  serverTotalEl.textContent=String(params.servers);
+
+  function onParamsChange(resetArrival=false){
+    params.lambdaPerMin = Math.max(0, parseFloat(lambdaIn.value)||0);
+    params.muPerMin = Math.max(0.01, parseFloat(muIn.value)||0.01);
+    params.servers = Math.max(1, parseInt(cIn.value,10)||1);
+    params.speed = Math.max(0.25, parseFloat(speedIn.value)||1.0);
+    serverTotalEl.textContent=String(params.servers);
+    // Update theory
+    const m = mmc(params.lambdaPerMin, params.muPerMin, params.servers);
+    function fmt(x){ if(!isFinite(x)) return '∞'; if(x<0.005) return x.toFixed(4); if(x<0.05) return x.toFixed(3); return x.toFixed(2); }
+    rho_v.textContent = (isFinite(m.rho)? m.rho.toFixed(2): '∞') + (m.stable? '' : ' ⚠');
+    rhoInlineEl.textContent = isFinite(m.rho)? m.rho.toFixed(2) : '∞';
+    Lq_v.textContent=fmt(m.Lq); L_v.textContent=fmt(m.L); Wq_v.textContent=fmt(m.Wq); W_v.textContent=fmt(m.W); Pc_v.textContent=m.stable? (m.Pc*100).toFixed(1)+' %' : '—';
+    // Servers count adjust
+    ensureServers();
+    // Arrival
+    if(resetArrival){ timeToNextArrival = randExp(lambdaPerSec()) * (1/60.0); }
+  }
+
+  // ===== Simulation State =====
+  const lambdaPerSec = ()=>params.lambdaPerMin/60.0;
+  const muPerSec = ()=>params.muPerMin/60.0;
+
+  let nowSim=0; // minutes
+  let lastReal=performance.now();
+  let paused=false;
+  let idCounter=1;
+
+  // Entities
+  const customers=new Map(); // id -> cust
+  const queue=[]; // waiting ids
+  const servers=[]; // {busy, custId, remainingMin, startMin}
+  function ensureServers(){
+    while(servers.length<params.servers) servers.push({busy:false, custId:null, remainingMin:0, startMin:null});
+    while(servers.length>params.servers){
+      const sv=servers.pop();
+      if(sv.busy && sv.custId!=null){
+        // Return to queue head to avoid starvation (rare)
+        queue.unshift(sv.custId);
+        const c=customers.get(sv.custId); if(c) c.state='waiting';
+      }
+    }
+  }
+  ensureServers();
+
+  // Arrival process
+  let timeToNextArrival = randExp(lambdaPerSec())*(1/60.0); // minutes
+  function scheduleArrivals(dtMin, dtReal){
+    timeToNextArrival -= dtMin;
+    while(timeToNextArrival <= 0){
+      spawnCustomer();
+      timeToNextArrival += randExp(lambdaPerSec())*(1/60.0);
+      if(timeToNextArrival < -5){ timeToNextArrival = 0; break; }
+    }
+  }
+
+  function spawnCustomer(){
+    const id=idCounter++;
+    const c={ id, state:'waiting', arrivalMin: nowSim, serviceStartMin:null, serviceDurMin:null, departMin:null,
+              flashInSec:0.6, flashDoneSec:0 };
+    customers.set(id,c);
+    queue.push(id);
+  }
+
+  function dispatch(){
+    ensureServers();
+    for(let i=0;i<servers.length;i++){
+      const sv=servers[i];
+      if(!sv.busy){
+        const nextId=queue.shift();
+        if(nextId!=null){
+          const cust=customers.get(nextId);
+          if(!cust) continue;
+          sv.busy=true; sv.custId=nextId;
+          const durMin=randExp(muPerSec())*(1/60.0);
+          sv.remainingMin = durMin;
+          sv.startMin = nowSim;
+          cust.state='inService';
+          cust.serviceStartMin=nowSim;
+          cust.serviceDurMin=durMin;
+        }
+      }
+    }
+  }
+
+  // Stats
+  let areaLq=0, areaL=0, servedN=0, sumWq=0, sumW=0;
+
+  function resetSim(){
+    nowSim=0; timeToNextArrival=randExp(lambdaPerSec())*(1/60.0);
+    customers.clear(); queue.length=0; servers.length=0; ensureServers();
+    areaLq=0; areaL=0; servedN=0; sumWq=0; sumW=0; idCounter=1;
+  }
+
+  // ===== Drawing (no movement) =====
+  function layout(){
+    const W=canvas.width, H=canvas.height;
+    const pad=22*DPR;
+    const titleH = 26*DPR;
+    const topY = pad + titleH;
+    const gap=16*DPR;
+    const colW = (W - pad*2 - gap*2)/3;
+    const waitArea = {x: pad, y: topY, w: colW, h: H - topY - pad};
+    const svcArea  = {x: pad + colW + gap, y: topY, w: colW, h: H - topY - pad};
+    const doneArea = {x: pad + (colW+gap)*2, y: topY, w: colW, h: H - topY - pad};
+    return {W,H,pad,titleH,topY,gap,waitArea,svcArea,doneArea};
+  }
+
+  const MAX_WAIT_DRAW = 24; // draw up to N waiting tokens
+  const MAX_DONE_DRAW = 18; // draw last N done tokens
+  const TOKEN_R = 12; // px before DPR
+
+  function drawAreaFrame(area, title){
+    ctx.save();
+    ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=2*DPR;
+    ctx.fillStyle='rgba(255,255,255,0.03)';
+    ctx.beginPath(); ctx.roundRect(area.x, area.y, area.w, area.h, 10*DPR); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='rgba(255,255,255,0.75)'; ctx.font=(14*DPR)+'px system-ui, sans-serif';
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    ctx.fillText(title, area.x + 12*DPR, area.y - 14*DPR);
+    ctx.restore();
+  }
+
+  function drawToken(x,y,r,fill,stroke,id,haloAlpha){
+    ctx.save();
+    // halo
+    if(haloAlpha>0){
+      ctx.globalAlpha = haloAlpha;
+      ctx.beginPath(); ctx.arc(x,y, r*1.9*DPR, 0, Math.PI*2);
+      ctx.strokeStyle = '#ffd166'; ctx.lineWidth = 2*DPR; ctx.stroke();
+      ctx.globalAlpha = 1.0;
+    }
+    // body
+    ctx.beginPath(); ctx.arc(x,y, r*DPR, 0, Math.PI*2);
+    ctx.fillStyle=fill; ctx.fill();
+    ctx.lineWidth=2*DPR; ctx.strokeStyle=stroke; ctx.stroke();
+    // id
+    ctx.fillStyle='#0b1020'; ctx.font=(10*DPR)+'px ui-monospace, monospace';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(id%1000), x, y);
+    ctx.restore();
+  }
+
+  const completedIds=[]; // last IDs
+
+  function drawWaiting(area, dtReal){
+    const r=TOKEN_R;
+    const gapX=8*DPR, gapY=8*DPR;
+    const cols=3;
+    const colW = (area.w - gapX*(cols+1))/cols;
+    const rows = Math.floor((area.h - gapY*2)/(2*r*DPR + gapY));
+    const maxDraw = Math.min(MAX_WAIT_DRAW, cols*rows);
+    const arr = queue.slice(0, maxDraw);
+    arr.forEach((id, i)=>{
+      const c=customers.get(id); if(!c) return;
+      if(c.flashInSec>0) c.flashInSec = Math.max(0, c.flashInSec - dtReal);
+      const col = Math.floor(i/rows);
+      const row = i%rows;
+      const x = area.x + gapX + col* (colW + gapX) + colW/2;
+      const y = area.y + gapY + row* (2*r*DPR + gapY) + r*DPR;
+      drawToken(x,y,r, '#ffd166', '#e9b949', id, c.flashInSec/0.6);
+    });
+    // overflow indicator
+    const overflow = queue.length - arr.length;
+    if(overflow>0){
+      ctx.save();
+      ctx.fillStyle='rgba(255,255,255,0.65)';
+      ctx.font=(12*DPR)+'px system-ui, sans-serif';
+      ctx.textAlign='left'; ctx.textBaseline='bottom';
+      ctx.fillText('… 他 '+overflow+' 名', area.x + 8*DPR, area.y + area.h - 8*DPR);
+      ctx.restore();
+    }
+  }
+
+  function drawServers(area){
+    const count = servers.length;
+    const gapY=12*DPR;
+    const boxH = Math.min(64*DPR, (area.h - gapY*(count+1))/Math.max(1,count));
+    const boxW = area.w - 16*DPR;
+    const x = area.x + 8*DPR;
+    ctx.save();
+    ctx.textAlign='left'; ctx.textBaseline='middle';
+    for(let i=0;i<count;i++){
+      const y = area.y + gapY + i*(boxH + gapY);
+      // Frame
+      ctx.fillStyle='rgba(255,255,255,0.04)';
+      ctx.strokeStyle='rgba(255,255,255,0.14)';
+      ctx.lineWidth=2*DPR;
+      ctx.beginPath(); ctx.roundRect(x, y, boxW, boxH, 10*DPR); ctx.fill(); ctx.stroke();
+      // Label
+      ctx.fillStyle='rgba(255,255,255,0.8)';
+      ctx.font=(12*DPR)+'px system-ui, sans-serif';
+      ctx.fillText('Server '+(i+1), x + 10*DPR, y + 12*DPR);
+
+      const sv=servers[i];
+      // Progress bar
+      const barX = x + 10*DPR, barY = y + boxH - 16*DPR;
+      const barW = boxW - 20*DPR, barH = 10*DPR;
+      ctx.fillStyle='rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW, barH, 5*DPR); ctx.fill();
+
+      let prog=0, label='—';
+      if(sv.busy && sv.custId!=null){
+        const c=customers.get(sv.custId);
+        if(c && c.serviceDurMin>0 && c.serviceStartMin!=null){
+          prog = clamp((nowSim - c.serviceStartMin)/c.serviceDurMin, 0, 1);
+        }
+        label = 'ID '+sv.custId + (prog>0? '（'+Math.round(prog*100)+'%）': '（開始）');
+      }
+      ctx.fillStyle = sv.busy? '#6bd66b' : 'rgba(255,255,255,0.15)';
+      ctx.beginPath(); ctx.roundRect(barX, barY, barW*prog, barH, 5*DPR); ctx.fill();
+
+      // Token in the box (left side)
+      if(sv.busy && sv.custId!=null){
+        const cx = x + boxW - 18*DPR;
+        const cy = y + boxH/2;
+        drawToken(cx, cy, TOKEN_R*0.8, '#6bd66b', '#4ec94e', sv.custId, 0);
+      }
+
+      // Label text
+      ctx.fillStyle='rgba(255,255,255,0.9)';
+      ctx.font=(11*DPR)+'px ui-monospace, monospace';
+      ctx.textAlign='right';
+      ctx.fillText(label, x + boxW - 22*DPR, y + 12*DPR);
+      ctx.textAlign='left';
+    }
+    ctx.restore();
+  }
+
+  function drawDone(area, dtReal){
+    const r=TOKEN_R;
+    const gapX=8*DPR, gapY=8*DPR;
+    const cols=3;
+    const colW = (area.w - gapX*(cols+1))/cols;
+    const rows = Math.floor((area.h - gapY*2)/(2*r*DPR + gapY));
+    const arr = completedIds.slice(-Math.min(MAX_DONE_DRAW, cols*rows));
+    // Draw newest at top-left
+    arr.forEach((id, idx)=>{
+      const c=customers.get(id);
+      let flash = c? c.flashDoneSec/0.6 : 0;
+      if(c && c.flashDoneSec>0) c.flashDoneSec = Math.max(0, c.flashDoneSec - dtReal);
+      const col = Math.floor(idx/rows);
+      const row = idx%rows;
+      const x = area.x + gapX + col*(colW+gapX) + colW/2;
+      const y = area.y + gapY + row*(2*r*DPR + gapY) + r*DPR;
+      drawToken(x,y,r, '#a7dbd8', '#69d2e7', id, flash);
+    });
+  }
+
+  // ===== Main loop =====
+  function currentLq(){ return queue.length; }
+  function currentLs(){ let busy=0; for(const sv of servers) if(sv.busy) busy++; return busy; }
+  function currentL(){ return currentLq()+currentLs(); }
+
+  function loop(){
+    const realNow=performance.now();
+    let dtReal=(realNow-lastReal)/1000; lastReal=realNow;
+    if(paused){ requestAnimationFrame(loop); return; }
+    dtReal=Math.min(dtReal, 0.12);
+    const dtMin = dtReal * params.speed / 60.0;
+    nowSim += dtMin;
+
+    scheduleArrivals(dtMin, dtReal);
+    dispatch();
+
+    // Services
+    for(let i=0;i<servers.length;i++){
+      const sv=servers[i];
+      if(sv.busy && sv.custId!=null){
+        sv.remainingMin -= dtMin;
+        if(sv.remainingMin<=0){
+          const c=customers.get(sv.custId);
+          if(c){
+            c.state='done'; c.departMin=nowSim; c.flashDoneSec=0.6;
+            servedN += 1;
+            if(c.serviceStartMin!=null && c.arrivalMin!=null){
+              const wq=c.serviceStartMin - c.arrivalMin;
+              const w=c.departMin - c.arrivalMin;
+              if(isFinite(wq)&&wq>=0) sumWq += wq;
+              if(isFinite(w)&&w>=0) sumW += w;
+            }
+            completedIds.push(sv.custId);
+            if(completedIds.length>200) completedIds.shift();
+          }
+          sv.busy=false; sv.custId=null; sv.remainingMin=0; sv.startMin=null;
+        }
+      }
+    }
+
+    // Time-averages
+    areaLq += currentLq()*dtMin;
+    areaL += currentL()*dtMin;
+
+    // Render
+    ctx.clearRect(0,0,canvas.width, canvas.height);
+    const {waitArea, svcArea, doneArea} = layout();
+    drawAreaFrame(waitArea, 'Waiting（待ち）');
+    drawAreaFrame(svcArea,  'In Service（処理中）');
+    drawAreaFrame(doneArea, 'Completed（完了）');
+    drawWaiting(waitArea, dtReal);
+    drawServers(svcArea);
+    drawDone(doneArea, dtReal);
+
+    // UI
+    const T=Math.max(nowSim,1e-6);
+    const Lq_avg=areaLq/T, L_avg=areaL/T;
+    const Wq_avg=(servedN>0)? (sumWq/servedN):0;
+    const W_avg=(servedN>0)? (sumW/servedN):0;
+    queueCountEl.textContent=String(currentLq());
+    inServiceCountEl.textContent=String(currentLs());
+    served_v.textContent=String(servedN);
+    // theoretical rhoInline already updated in onParamsChange
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // Pause & Reset
+  pauseBtn.addEventListener('click',()=>{ paused=!paused; pauseBtn.textContent = paused? '▶ 再開':'⏸ 一時停止'; });
+  resetBtn.addEventListener('click',()=>{ resetSim(); });
+
+  // Init on load
+  onParamsChange(true);
+})();
+</script>
+</body>
+</html>
